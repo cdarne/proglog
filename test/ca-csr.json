@@ -1,0 +1,16 @@
+{
+  "CN": "My Awesome CA",
+  "key": {
+    "algo": "rsa",
+    "size": 2048
+  },
+  "names": [
+    {
+      "C": "CA",
+      "ST": "Québec",
+      "L": "Saint-Adolphe-d'Howard",
+      "O": "La Belle du Village",
+      "OU": "CA Services"
+    }
+  ]
+}
