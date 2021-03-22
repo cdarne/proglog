@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	api "github.com/cdarne/proglog/api/v1"
+	"github.com/cdarne/proglog/internal/auth"
 	"github.com/cdarne/proglog/internal/config"
 	"github.com/cdarne/proglog/internal/log"
 	"github.com/stretchr/testify/require"
@@ -18,21 +19,27 @@ import (
 )
 
 func TestServer(t *testing.T) {
-	for scenario, fn := range map[string]func(t *testing.T, client api.LogClient, config *Config){
+	for scenario, fn := range map[string]func(
+		t *testing.T,
+		rootClient api.LogClient,
+		nobodyClient api.LogClient,
+		config *Config,
+	){
 		"produce/consume a message to/from the log succeeds": testProduceConsume,
 		"produce/consume stream succeeds":                    testProduceConsumeStream,
 		"consume stream wait for next log":                   testConsumeStreamWaitForNext,
 		"consume past log boundary fails":                    testConsumePastBoundary,
+		"authorized fails":                                   testUnauthorized,
 	} {
 		t.Run(scenario, func(t *testing.T) {
-			client, config, teardown := setupTest(t, nil)
+			rootClient, nobodyClient, config, teardown := setupTest(t, nil)
 			defer teardown()
-			fn(t, client, config)
+			fn(t, rootClient, nobodyClient, config)
 		})
 	}
 }
 
-func setupTest(t *testing.T, fn func(*Config)) (client api.LogClient, cfg *Config, teardown func()) {
+func setupTest(t *testing.T, fn func(*Config)) (rootClient api.LogClient, nobodyClient api.LogClient, cfg *Config, teardown func()) {
 	t.Helper()
 
 	dir, err := ioutil.TempDir("", "server-test")
@@ -41,8 +48,10 @@ func setupTest(t *testing.T, fn func(*Config)) (client api.LogClient, cfg *Confi
 	clog, err := log.NewLog(dir, log.Config{})
 	require.NoError(t, err)
 
+	authorizer := auth.New(config.ACLModelFile, config.ACLPolicyFile)
 	cfg = &Config{
-		CommitLog: clog,
+		CommitLog:  clog,
+		Authorizer: authorizer,
 	}
 
 	if fn != nil {
@@ -50,22 +59,24 @@ func setupTest(t *testing.T, fn func(*Config)) (client api.LogClient, cfg *Confi
 	}
 
 	serverAddress, serverTearDown := setupServer(t, cfg)
-	client, clientTearDown := setupClient(t, serverAddress)
+	rootClient, rootClientTearDown := setupClient(t, serverAddress, config.RootClientKeyFile, config.RootClientCertFile)
+	nobodyClient, nobodyClientTearDown := setupClient(t, serverAddress, config.NobodyClientKeyFile, config.NobodyClientCertFile)
 
-	return client, cfg, func() {
-		clientTearDown()
+	return rootClient, nobodyClient, cfg, func() {
+		rootClientTearDown()
+		nobodyClientTearDown()
 		serverTearDown()
 		clog.Remove()
 	}
 }
 
-func setupClient(t *testing.T, serverAddress string) (client api.LogClient, teardown func()) {
+func setupClient(t *testing.T, serverAddress, clientKeyFile, clientCertFile string) (client api.LogClient, teardown func()) {
 	t.Helper()
 
 	clientTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
 		CAFile:   config.CAFile,
-		KeyFile:  config.ClientKeyFile,
-		CertFile: config.ClientCertFile,
+		KeyFile:  clientKeyFile,
+		CertFile: clientCertFile,
 	})
 	require.NoError(t, err)
 
@@ -110,7 +121,7 @@ func setupServer(t *testing.T, serverConfig *Config) (serverAddress string, tear
 	}
 }
 
-func testProduceConsume(t *testing.T, client api.LogClient, cfg *Config) {
+func testProduceConsume(t *testing.T, client api.LogClient, _ api.LogClient, cfg *Config) {
 	ctx := context.Background()
 
 	want := &api.Record{
@@ -127,7 +138,7 @@ func testProduceConsume(t *testing.T, client api.LogClient, cfg *Config) {
 	require.Equal(t, want.Value, consume.Record.Value)
 }
 
-func testConsumePastBoundary(t *testing.T, client api.LogClient, cfg *Config) {
+func testConsumePastBoundary(t *testing.T, client api.LogClient, _ api.LogClient, cfg *Config) {
 	ctx := context.Background()
 
 	_, err := client.Produce(ctx, &api.ProduceRequest{
@@ -145,7 +156,7 @@ func testConsumePastBoundary(t *testing.T, client api.LogClient, cfg *Config) {
 	require.Equal(t, codes.Code(404), errCode)
 }
 
-func testProduceConsumeStream(t *testing.T, client api.LogClient, cfg *Config) {
+func testProduceConsumeStream(t *testing.T, client api.LogClient, _ api.LogClient, cfg *Config) {
 	ctx := context.Background()
 
 	records := []*api.Record{
@@ -180,7 +191,7 @@ func testProduceConsumeStream(t *testing.T, client api.LogClient, cfg *Config) {
 	}
 }
 
-func testConsumeStreamWaitForNext(t *testing.T, client api.LogClient, cfg *Config) {
+func testConsumeStreamWaitForNext(t *testing.T, client api.LogClient, _ api.LogClient, cfg *Config) {
 	ctx := context.Background()
 
 	records := []*api.Record{
@@ -217,4 +228,28 @@ func testConsumeStreamWaitForNext(t *testing.T, client api.LogClient, cfg *Confi
 	require.NoError(t, err)
 
 	wg.Wait()
+}
+
+func testUnauthorized(t *testing.T, _ api.LogClient, client api.LogClient, cfg *Config) {
+	ctx := context.Background()
+
+	want := &api.Record{
+		Value: []byte("hello world"),
+	}
+
+	produce, err := client.Produce(ctx, &api.ProduceRequest{Record: want})
+	if produce != nil {
+		t.Fatalf("produce response must be nil")
+	}
+	require.Error(t, err)
+	gotCode, wantCode := status.Code(err), codes.PermissionDenied
+	require.Equal(t, wantCode, gotCode)
+
+	consume, err := client.Consume(ctx, &api.ConsumeRequest{Offset: 0})
+	if consume != nil {
+		t.Fatalf("consume response must be nil")
+	}
+	require.Error(t, err)
+	gotCode, wantCode = status.Code(err), codes.PermissionDenied
+	require.Equal(t, wantCode, gotCode)
 }
