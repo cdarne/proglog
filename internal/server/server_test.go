@@ -35,30 +35,6 @@ func TestServer(t *testing.T) {
 func setupTest(t *testing.T, fn func(*Config)) (client api.LogClient, cfg *Config, teardown func()) {
 	t.Helper()
 
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	serverAddress := l.Addr().String()
-
-	// Client setup
-	clientTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{CAFile: config.CAFile})
-	require.NoError(t, err)
-
-	clientCreds := credentials.NewTLS(clientTLSConfig)
-	cc, err := grpc.Dial(serverAddress, grpc.WithTransportCredentials(clientCreds))
-	require.NoError(t, err)
-
-	client = api.NewLogClient(cc)
-
-	// Server setup
-	serverTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
-		CertFile:      config.ServerCertFile,
-		KeyFile:       config.ServerKeyFile,
-		CAFile:        config.CAFile,
-		ServerAddress: serverAddress,
-	})
-	require.NoError(t, err)
-	serverCreds := credentials.NewTLS(serverTLSConfig)
-
 	dir, err := ioutil.TempDir("", "server-test")
 	require.NoError(t, err)
 
@@ -72,18 +48,65 @@ func setupTest(t *testing.T, fn func(*Config)) (client api.LogClient, cfg *Confi
 	if fn != nil {
 		fn(cfg)
 	}
-	server, err := NewGRPCServer(cfg, grpc.Creds(serverCreds))
+
+	serverAddress, serverTearDown := setupServer(t, cfg)
+	client, clientTearDown := setupClient(t, serverAddress)
+
+	return client, cfg, func() {
+		clientTearDown()
+		serverTearDown()
+		clog.Remove()
+	}
+}
+
+func setupClient(t *testing.T, serverAddress string) (client api.LogClient, teardown func()) {
+	t.Helper()
+
+	clientTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
+		CAFile:   config.CAFile,
+		KeyFile:  config.ClientKeyFile,
+		CertFile: config.ClientCertFile,
+	})
+	require.NoError(t, err)
+
+	clientCreds := credentials.NewTLS(clientTLSConfig)
+	cc, err := grpc.Dial(serverAddress, grpc.WithTransportCredentials(clientCreds))
+	require.NoError(t, err)
+
+	client = api.NewLogClient(cc)
+
+	return client, func() {
+		cc.Close()
+	}
+}
+
+func setupServer(t *testing.T, serverConfig *Config) (serverAddress string, teardown func()) {
+	t.Helper()
+
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	serverAddress = l.Addr().String()
+
+	serverTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
+		CertFile:      config.ServerCertFile,
+		KeyFile:       config.ServerKeyFile,
+		CAFile:        config.CAFile,
+		ServerAddress: serverAddress,
+		Server:        true,
+	})
+	require.NoError(t, err)
+	serverCreds := credentials.NewTLS(serverTLSConfig)
+
+	server, err := NewGRPCServer(serverConfig, grpc.Creds(serverCreds))
 	require.NoError(t, err)
 
 	go func() {
 		server.Serve(l)
 	}()
 
-	return client, cfg, func() {
+	return serverAddress, func() {
 		server.Stop()
-		cc.Close()
 		l.Close()
-		clog.Remove()
 	}
 }
 
