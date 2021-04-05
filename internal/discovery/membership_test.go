@@ -42,16 +42,16 @@ func setupMember(t *testing.T, members []*Membership) ([]*Membership, *handler) 
 		"rpc_addr": addr,
 	}
 	c := Config{
-		NodeName:    fmt.Sprintf("test-node-%d", id),
-		BindAddress: addr,
-		Tags:        tags,
+		NodeName: fmt.Sprintf("test-node-%d", id),
+		BindAddr: addr,
+		Tags:     tags,
 	}
 	h := &handler{}
 	if len(members) == 0 {
 		h.joins = make(chan map[string]string, 3)
 		h.leaves = make(chan string, 3)
 	} else {
-		c.StartJoinAddrs = []string{members[0].BindAddress}
+		c.StartJoinAddrs = []string{members[0].BindAddr}
 	}
 	m, err := New(h, c)
 	require.NoError(t, err)

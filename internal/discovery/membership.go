@@ -17,7 +17,7 @@ type Membership struct {
 
 type Config struct {
 	NodeName       string
-	BindAddress    string
+	BindAddr       string
 	Tags           map[string]string
 	StartJoinAddrs []string
 }
@@ -48,7 +48,7 @@ func (m *Membership) Leave() error {
 }
 
 func (m *Membership) setupSerf() (err error) {
-	addr, err := net.ResolveTCPAddr("tcp", m.BindAddress)
+	addr, err := net.ResolveTCPAddr("tcp", m.BindAddr)
 	if err != nil {
 		return err
 	}
