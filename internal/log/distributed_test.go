@@ -71,7 +71,16 @@ func TestMultipleNodes(t *testing.T) {
 		}, 500*time.Millisecond, 50*time.Millisecond)
 	}
 
-	err := leader.Leave("test-1")
+	// Check GetServers
+	servers, err := leader.GetServers()
+	require.NoError(t, err)
+	require.Equal(t, 3, len(servers))
+	require.True(t, servers[0].IsLeader)
+	require.False(t, servers[1].IsLeader)
+	require.False(t, servers[2].IsLeader)
+	// ----------------
+
+	err = leader.Leave("test-1")
 	require.NoError(t, err)
 
 	time.Sleep(50 * time.Millisecond)

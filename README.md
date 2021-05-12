@@ -5,8 +5,10 @@ Based on a the book [Distributed Services with Go](https://pragprog.com/titles/t
 This project uses TLS for security, so you'll need to create your own certificates. I'm using `cfssl` to generate them locally:
 
 ```
-$ go get -u github.com/cloudflare/cfssl/cmd/cfssl
-$ go get -u github.com/cloudflare/cfssl/cmd/cfssljson
+$ go get github.com/cloudflare/cfssl/cmd/cfssl
+$ go get github.com/cloudflare/cfssl/cmd/cfssljson
+$ go install google.golang.org/protobuf/cmd/protoc-gen-go
+$ go get google.golang.org/grpc/cmd/protoc-gen-go-grpc
 ```
 
 Then you can create your own certificates using the Makefile command:
