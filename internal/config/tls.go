@@ -7,6 +7,14 @@ import (
 	"io/ioutil"
 )
 
+type TLSConfig struct {
+	CertFile      string
+	KeyFile       string
+	CAFile        string
+	ServerAddress string
+	Server        bool
+}
+
 func SetupTLSConfig(cfg TLSConfig) (tlsConfig *tls.Config, err error) {
 	tlsConfig = &tls.Config{}
 	if cfg.CertFile != "" && cfg.KeyFile != "" {
@@ -35,12 +43,4 @@ func SetupTLSConfig(cfg TLSConfig) (tlsConfig *tls.Config, err error) {
 		tlsConfig.ServerName = cfg.ServerAddress
 	}
 	return tlsConfig, nil
-}
-
-type TLSConfig struct {
-	CertFile      string
-	KeyFile       string
-	CAFile        string
-	ServerAddress string
-	Server        bool
 }
