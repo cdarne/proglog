@@ -30,7 +30,7 @@ func SetupTLSConfig(cfg TLSConfig) (tlsConfig *tls.Config, err error) {
 			return nil, err
 		}
 		ca := x509.NewCertPool()
-		ok := ca.AppendCertsFromPEM([]byte(b))
+		ok := ca.AppendCertsFromPEM(b)
 		if !ok {
 			return nil, fmt.Errorf("failed to parse root certificate: %q", cfg.CAFile)
 		}
