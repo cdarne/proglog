@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cdarne/proglog/internal/loadbalance"
+
 	api "github.com/cdarne/proglog/api/v1"
 	"github.com/cdarne/proglog/internal/agent"
 	"github.com/cdarne/proglog/internal/config"
@@ -43,15 +45,15 @@ func TestAgent(t *testing.T) {
 	)
 	require.NoError(t, err)
 
+	// Wait until replication has finished to Consume from followers
+	time.Sleep(3 * time.Second)
+
 	consumeResponse, err := leaderClient.Consume(
 		context.Background(),
 		&api.ConsumeRequest{Offset: produceResponse.Offset},
 	)
 	require.NoError(t, err)
 	require.Equal(t, consumeResponse.Record.Value, logValue)
-
-	// Wait until replication has finished
-	time.Sleep(3 * time.Second)
 
 	followerClient := client(t, agents[1], peerTLSConfig)
 	consumeResponse, err = followerClient.Consume(
@@ -123,11 +125,11 @@ func setupAgents(t *testing.T, peerTLSConfig *tls.Config) (agents []*agent.Agent
 	}
 
 	return agents, func() {
-		for _, agent := range agents {
-			err := agent.Shutdown()
+		for _, a := range agents {
+			err := a.Shutdown()
 			require.NoError(t, err)
 
-			err = os.RemoveAll(agent.Config.DataDir)
+			err = os.RemoveAll(a.Config.DataDir)
 			require.NoError(t, err)
 		}
 	}
@@ -139,7 +141,7 @@ func client(t *testing.T, agent *agent.Agent, tlsConfig *tls.Config) api.LogClie
 	rpcAddr, err := agent.Config.RPCAddr()
 	require.NoError(t, err)
 
-	conn, err := grpc.Dial(rpcAddr, opts...)
+	conn, err := grpc.Dial(fmt.Sprintf("%s:///%s", loadbalance.Name, rpcAddr), opts...)
 	require.NoError(t, err)
 
 	return api.NewLogClient(conn)
