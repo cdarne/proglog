@@ -113,6 +113,7 @@ func testLogConfig(id string, ln net.Listener, isLeader bool) log.Config {
 	config.Raft.ElectionTimeout = 50 * time.Millisecond
 	config.Raft.LeaderLeaseTimeout = 50 * time.Millisecond
 	config.Raft.CommitTimeout = 5 * time.Millisecond
+	config.Raft.BindAddr = ln.Addr().String()
 	if isLeader {
 		config.Raft.Bootstrap = true
 	}
