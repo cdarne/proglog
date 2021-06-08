@@ -1,4 +1,5 @@
 CONFIG_PATH=${HOME}/.proglog
+TAG ?= 0.0.1
 
 ${CONFIG_PATH}:
 	mkdir -p ${CONFIG_PATH}
@@ -48,3 +49,7 @@ ${CONFIG_PATH}/policy.csv: ${CONFIG_PATH}
 .PHONY: test
 test: ${CONFIG_PATH}/model.conf ${CONFIG_PATH}/policy.csv gencert
 	go test -race ./...
+
+.PHONY: build-docker
+build-docker:
+	docker build -t github.com/cdarne/proglog:$(TAG) .
